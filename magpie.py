@@ -3,47 +3,148 @@ import shutil
 import os
 import numpy as np
 from subprocess import PIPE, Popen
-_mesasdk = '/ccs/home/frivas/launch_mesasdk'
+_mesa_dir = os.environ.get('MESA_DIR')
+_mesasdk_root = os.environ.get('MESASDK_ROOT')
 _maxmultipars = 10000000
 
 class parameterGroup(object):
-    def __init__(self, parfile, type='controls'):
-        if parfile.split('.')[-1]=='defaults':
-            n, v, d, err = getRawDefaults(parfile)
-            self.__dict__.update(dict(zip(n, zip(v,d))))
+    types = ['controls', 'star_job', 'pgstar']
+    
+    def __init__(self):
+        self.params = {}
+        self.defaults = {}
+        for t in parameterGroup.types:
+            self.params[t] = {}
+            self.defaults[t] = {}
+
+    def __getitem__(self, key):
+        if key in parameterGroup.types:
+            return self.params[key]
         else:
-            self.setPars(parfile, type=type)
-        self._type = type
+            return {}
+
+    def readDefaults(self, MESA_DIR):
+        if _mesa_dir is None:
+            print("MESA_DIR not set, cannot read defaults.")
+            return
+        globstr = MESA_DIR+"/star/defaults/"
+        fnames = sorted([x for x in os.listdir(globstr) if ".defaults" in x])
+        fpaths = [globstr+x for x in fnames]
+        assert(len(fpaths)==3)
+        self.setDefs(fpaths[0], type='controls')
+        self.setDefs(fpaths[1], type='pgstar')
+        self.setDefs(fpaths[2], type='star_job')
+        for t in parameterGroup.types:
+            self.mixPars(t)
             
     def setPars(self, inlist, type='controls'):
         """sets the parameters from an inlist file in the 
-        object
+        object. defaults to changing controls
         """
         cd = dict(zip(*getRawPars(inlist, type=type)))
-        self.__dict__.update(cd)
+        self.params[type].update(cd)
 
-    def tabulate(self):
+    def setDefs(self, parfile, type='controls'):
+        """reads in a .default file for check for altered values and 
+        docstrings on parameters
+        """
+        n, v, d, err = getRawDefaults(parfile)
+        cd = dict(zip(n, zip(v,d)))
+        self.defaults[type].update(cd)
+
+    def readInlist(self, inlist):
+        self.setPars(inlist, type='controls')
+        self.setPars(inlist, type='star_job')
+        self.setPars(inlist, type='pgstar')
+        
+    def quickLook(self):
+        """returns pandas dataframe with read inlist values for quick 
+        editing of parameters"""
+        frames = []
+        for t in parameterGroup.types:
+            df = pd.DataFrame()
+            names, values = zip(*self.params[t].items())
+            if not names:
+                names, values = "None", 0
+            df[t], df['value'] = names, values
+            frames.append(df)
+        return pd.concat(frames)
+        
+    def tabulate(self, type):
         """returns a pandas dataframe with parameters 
         currently being used
         """
-        usedpars = self.cleandict()
-        names, values = zip(*usedpars.items())
         df = pd.DataFrame()
-        if len(names)==0:
-            df['&{}'.format(self._type)], df['value'] = "None", 0
+        docs = ""
+        if not self.defaults[type]:
+            names, values = zip(*self.params[type].items())
         else:
-            df['&{}'.format(self._type)], df['value'] = names, values
-        print df
-    
-    def cleandict(self):
-        newdict = {}
-        for key, value in self.__dict__.iteritems():
-            if isinstance(value, tuple) or value==self._type:
-                continue
+            self.mixPars(type)
+            names, tuples = zip(*self.defaults[type].items())
+            values, docs = zip(*tuples)
+            docs = parseDocs(docs)
+        if not names:
+            names, values, docs = "None", 0, ""
+        df[type], df['value'], df['docstr'] = names, values, docs
+        return df.set_index(type)
+
+    def mixPars(self, type='controls'):
+        """sets the values of inlists into the default dictionary"""
+        if not self.defaults[type]:
+            return
+        else:
+            for k, v in self[type].items():
+                try:
+                    dv, doc = self.defaults[type][k]
+                    self.defaults[type][k] = (v, doc)
+                except KeyError:
+                    continue
+
+    def readChanges(self, df):
+        for t in parameterGroup.types:
+            try:
+                cont = df[[t,'value']].dropna(0).set_index(t)
+            except KeyError:
+                if df.index.name==t:
+                    cont = df
+                else:
+                    continue
+            newdict = cont.T.to_dict('records')[0]
+            for k, v in newdict.items():
+                try:
+                    dv, doc = self.defaults[t][k]
+                    if v!=dv:
+                        self.defaults[t][k] = (v, doc)
+                        self[t][k] = v
+                except KeyError:
+                    continue
+
+    def writeInlists(self, outpath, sjname="star_job",
+                     ctname="controls", pgname="pgstar"):
+        """Receives 3 dictionaries and builds a general inlist, plus 3
+        separate files called by it.
+        """
+        for i, t in enumerate(parameterGroup.types):
+            keys = ["read_extra_{}_inlist1", "extra_{}_inlist1_name"]
+            vals = ['.true.', "inlist_{}".format(t)]
+            inlistd = dict(zip([k.format(t) for k in keys], vals))
+            if not i:
+                write2Inlist(inlistd, "&{}".format(t), outpath, "inlist", 
+                             clobber=True)
             else:
-                newdict.update({key: str(value)})
-        return newdict
-        
+                write2Inlist(inlistd, "&{}".format(t), outpath, "inlist")
+            write2Inlist(self[t], "&{}".format(t), outpath, xname, 
+                         clobber=True)
+
+
+def parseDocs(dlist):
+    nd = []
+    for d in dlist:
+        if isinstance(d, list):
+            nd.append("".join(d))
+        else:
+            nd.append(d)
+    return nd
 
 
 def setupMESArun(codesource, destination, clobber=True):
@@ -114,7 +215,8 @@ def getRawDefaults(defaultfile):
         for line in par:
             if len(line.strip())>1:
                 if line.strip()[0]!= '!':
-                    pnames.append(line.strip().split('=')[0].strip('9012345678 .):({}#!\n').lower())
+                    prel =line.split('=')[0].strip('9012345678 .):({}#!\n')
+                    pnames.append(prel.lower())
             if len(line.strip())<1:
                 continue
             if flush and not '!###' in line.split()[0]:
@@ -123,8 +225,8 @@ def getRawDefaults(defaultfile):
             if '!###' in line.split()[0]:
                 flush = False
                 if setvars:
-                    #this means there's not enough values for the defined variables, 
-                    #so reset everything
+                    #this means there's not enough values for the defined 
+                    # variables, so reset everything
                     name, val = "", ""
                     desc = []
                     multi = []
@@ -133,11 +235,13 @@ def getRawDefaults(defaultfile):
                     # split fixes comentaries right beside the DEFINITION 
                     # of the variables. lower fixes Msun vs msun differences.
                     # no consistency whatsoever :C
-                    name = line.strip('9012345678  .):({}#!\n').lower().split()[0]
+                    prel = line.strip('9012345678  .):({}#!\n').lower()
+                    name = prel.split()[0]
                     multi.append(name)
                     namenum = plainGenerator(_maxmultipars)
                 else:
-                    multi.append(line.strip('9012345678  .):({}#!\n').lower().split()[0])
+                    prel = line.strip('9012345678  .):({}#!\n').lower()
+                    multi.append(prel.split()[0])
                 doc = True
                 continue
             if doc:
@@ -145,7 +249,7 @@ def getRawDefaults(defaultfile):
                     desc.append(line.strip(' !'))
                 else:
                     setvars = True
-                    # controls.defaults has a double '=' o some of its params...
+                    # controls.defaults has double '=' on some of its params...
                     avoidequals = line.strip().split('=')
                     cname, val = avoidequals[:2]
                     cname = cname.strip('9012345678  .):(').lower()
@@ -196,51 +300,7 @@ def plainGenerator(length):
         i += 1
 
 
-def writeInlists(star_job, controls, pgstar, outpath, sjname="star_job",
-                 ctname="controls", pgname="pgstar"):
-    """Receives 3 dictionaries and builds a general inlist, plus 3
-    separate files called by it.
-    """
-    sjinstr = ('read_extra_star_job_inlist1',
-               'extra_star_job_inlist1_name',
-               'inlist_{}'.format(sjname))
-    ctinstr = ('read_extra_controls_inlist1',
-               'extra_controls_inlist1_name',
-               'inlist_{}'.format(ctname))
-    pginstr = ('read_extra_pgstar_inlist1',
-               'extra_pgstar_inlist1_name',
-               'inlist_{}'.format(pgname))
-
-    sjdict = dict(zip(sjinstr[:2],('.true.', "inlist_{}".format(sjname))))
-    ctdict = dict(zip(ctinstr[:2],('.true.', "inlist_{}".format(ctname))))
-    pgdict = dict(zip(pginstr[:2],('.true.', "inlist_{}".format(pgname))))
-    # write 'inlist'
-    write2Inlist(sjdict, "&star_job", outpath, "inlist", clobber=True)
-    write2Inlist(ctdict, "&controls", outpath, "inlist")
-    write2Inlist(pgdict, "&pgstar", outpath, "inlist")
-    # Write "inlist_specific"
-    write2Inlist(star_job, "&star_job", outpath, sjinstr[2], clobber=True)
-    write2Inlist(controls, "&controls", outpath, ctinstr[2], clobber=True)
-    write2Inlist(pgstar, "&pgstar", outpath, pginstr[2], clobber=True)
-
-
-def write2Inlist(parameters, header, outpath, fname, clobber=False):
-    """Write paramater ditionary to file, appending for
-    clobber=False (default)
-    """
-    if clobber:
-        opt = 'w'
-    else:
-        opt = 'a'
-    with open("/".join([outpath, fname]), opt) as o:
-        o.write("\n{}\n\n".format(header))
-        for key in parameters.keys():
-            o.write("      {} = {}\n".format(key,
-                                       mesaParse(parameters[key])))
-        o.write("\n/\n")
-
-
-def mesaParse(arg):
+def fortParse(arg):
     """returns a parsed variable from a parameter (bool,
     str, or number)
     """
@@ -256,76 +316,38 @@ def mesaParse(arg):
             return '"{}"'.format(arg.strip('"\' '))
 
 
-def compileMESA(outpath):
+def write2Inlist(parameters, header, outpath, fname, clobber=False):
+    """Write paramater ditionary to file, appending for
+    clobber=False (default)
+    """
+    if clobber:
+        opt = 'w'
+    else:
+        opt = 'a'
+    with open("/".join([outpath, fname]), opt) as o:
+        o.write("\n{}\n\n".format(header))
+        for key in parameters.keys():
+            o.write("      {} = {}\n".format(key,
+                                       bu.fortParse(parameters[key])))
+        o.write("\n/\n")
+
+
+def compileMESA(outpath, startsdk=True):
     """calls ./mk at outpath, compiling the run
     """
-    comm = 'source {} && cd {} && ./mk'.format(_mesasdk, outpath)
-    print(comm)
+    if _mesa_dir is None:
+        print("MESA_DIR not set. Cannot compile. Returning.")
+        return 1
+    if startsdk:
+        if _mesasdk_root is None:
+            print("MESASDK_ROOT not set. Skipping sdk init.")
+            comm = 'cd {} && ./mk'.format(outpath)
+        else:
+            init = '{}/bin/mesasdk_init.sh'.format(_mesasdk_root)
+            comm = 'source {} && cd {} && ./mk'.format(init, outpath)
+    print('Excecuting: {}'.format(comm))
     p = Popen(['/bin/bash'], stdin=PIPE, stdout=PIPE)
     out, err = p.communicate(input=comm.encode())
     print(out.decode())
     exitcode = p.returncode
     return exitcode
-
-
-def execute(outpath, now=False):
-    """qsubs the sumbit.pbs at outpath
-
-    Args:
-        outpath (str): runfolder
-
-    Returns:
-        (tuple): STDOUT, STDERR, ERRCODE
-
-    """
-    if now:
-        comm = 'source {} && cd {} && ./rn'.format(_mesasdk, outpath)
-        p = Popen(['/bin/bash'], stdin=PIPE, stdout=PIPE)
-        out, err = p.communicate(input=comm.encode())
-        print(out.decode())
-        exitcode = p.returncode
-    else:
-        command = 'qsub submit.pbs'
-        p = Popen(command.split(), cwd=os.path.abspath(outpath),
-                  stdin=PIPE, stdout=PIPE, stderr=PIPE)
-        r, e = p.communicate()
-        print(r.decode())
-        exitcode = p.returncode
-    return exitcode
-
-
-def subTITAN(outpath, nametag, time='12:00:00', nodes=1252, j1=True,
-             type='FLASH', slines=[]):
-    """builds a submit.pbs file, specifying nodes, times, and
-    inserting miscellaneous scriptlines(slines) before aprun command
-    """
-    subHeader = ['#!/bin/bash', '#PBS -A CSC198', '#PBS -j oe', '#PBS -V',
-                 '#PBS -l gres=atlas1', '#PBS -m abe',
-                 '#PBS -M rivas.aguilera@gmail.com']
-    subScript = ['date',
-                 'echo Submitted from: $PBS_O_WORKDIR',
-                 'echo #####################']
-    if slines:
-        subScript = subScript + slines
-    subScript.append('cd {}'.format(os.path.abspath(outpath)))
-    subHeader.append('#PBS -l walltime={},nodes={}'.format(time, nodes))
-    subHeader.append('#PBS -N {}'.format(nametag))
-    if type=='MESA':
-        if j1:
-            subScript.append('OMP_NUM_THREADS={}'.format(int(nodes*8)))
-        else:
-            subScript.append('OMP_NUM_THREADS={}'.format(int(nodes*2*8)))
-        subScript.append('export OMP_NUM_THREADS')
-        command = './rn'
-    else:
-        command = './flash4'
-    if j1:
-        subScript.append('aprun -j1 -n {} {}'.format(nodes*8, command))
-    else:
-        subScript.append('aprun -n {} {}'.format(nodes*16, command))
-    with open(outpath+"/submit.pbs", 'w') as o:
-        o.write("\n".join(subHeader))
-        o.write("\n")
-        o.write("\n".join(subScript))
-        o.write("\n")
-
