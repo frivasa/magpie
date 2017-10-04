@@ -103,9 +103,10 @@ class parameterGroup(object):
         frames = []
         for t in parameterGroup.types:
             df = pd.DataFrame()
-            names, values = zip(*self.params[t].items())
-            if not names:
+            if not self.params[t]:
                 names, values = "None", 0
+            else:
+                names, values = zip(*self.params[t].items())
             df[t], df['value'] = names, values
             frames.append(df)
         return pd.concat(frames)
@@ -162,14 +163,18 @@ class parameterGroup(object):
                 else:
                     continue
             newdict = cont.T.to_dict('records')[0]
-            for k, v in newdict.items():
-                try:
-                    dv, doc = self.defaults[t][k]
-                    if fortParse(v)!=fortParse(dv):
-                        self.defaults[t][k] = (fortParse(v), doc)
-                        self[t][k] = fortParse(v)
-                except KeyError:
-                    continue
+            if not self.defaults[t]:
+                self.params[t].update(newdict)
+            else:
+                for k, v in newdict.items():
+                    try:
+                        dv, doc = self.defaults[t][k]
+                        if fortParse(v)!=fortParse(dv):
+                            self.defaults[t][k] = (fortParse(v), doc)
+                            self[t][k] = fortParse(v)
+                    except KeyError:
+                        continue
+                self.mixPars(t)
 
     def writeInlists(self, outpath, sjname="star_job",
                      ctname="controls", pgname="pgstar"):
