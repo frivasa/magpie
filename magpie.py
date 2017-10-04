@@ -165,9 +165,9 @@ class parameterGroup(object):
             for k, v in newdict.items():
                 try:
                     dv, doc = self.defaults[t][k]
-                    if v!=dv:
-                        self.defaults[t][k] = (v, doc)
-                        self[t][k] = v
+                    if fortParse(v)!=fortParse(dv):
+                        self.defaults[t][k] = (fortParse(v), doc)
+                        self[t][k] = fortParse(v)
                 except KeyError:
                     continue
 
@@ -393,10 +393,10 @@ def fortParse(arg):
         val = np.float(arg.replace('d','E'))
         return arg
     except ValueError:
-        if arg=='.true.':
-            return arg
-        elif arg=='.false.':
-            return arg
+        if '.true.' in arg.lower():
+            return arg.strip()
+        elif '.false.' in arg.lower():
+            return arg.strip()
         else:
             return '"{}"'.format(arg.strip('"\' '))
 
@@ -419,7 +419,7 @@ def write2Inlist(parameters, header, outpath, fname, clobber=False):
         opt = 'a'
     with open("/".join([outpath, fname]), opt) as o:
         o.write("\n{}\n\n".format(header))
-        for k, v in parameters.items():
+        for k, v in sorted(parameters.items()):
             o.write("      {} = {}\n".format(k, fortParse(v)))
         o.write("\n/\n")
 
