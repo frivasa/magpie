@@ -51,7 +51,7 @@ class parameterGroup(object):
         self.setDefs(fpaths[2], type='star_job')
         for t in parameterGroup.types:
             self.mixPars(t)
-            
+
     def setPars(self, inlist, type='controls'):
         """sets the parameters from an inlist in the 
         object. Reads in only the 'type' parameters so if 
@@ -91,7 +91,25 @@ class parameterGroup(object):
         self.setPars(inlist, type='controls')
         self.setPars(inlist, type='star_job')
         self.setPars(inlist, type='pgstar')
+
+    def readSection(self, runf, section='default'):
+        """Reads inlist files at 'runf' using the inlists with
+        'section' suffix.
         
+        Args:
+            runf (str): path to work folder.
+            section (str): inlists' suffix.
+
+        """
+        inlists = ["{}_{}".format(section, t) for t in parameterGroup.types]
+        paths = [os.path.join(runf, inl) for inl in inlists]
+        print "Read:"
+        print "\n".join(paths)
+        print "Into parameterGroup."
+        for t in parameterGroup.types:
+            p = os.path.join(runf, "{}_{}".format(section, t))
+            self.setPars(p, type=t)
+
     def quickLook(self):
         """returns pandas dataframe with read inlist values for quick 
         editing of parameters.
@@ -110,7 +128,7 @@ class parameterGroup(object):
             df[t], df['value'] = names, values
             frames.append(df)
         return pd.concat(frames)
-        
+
     def tabulate(self, type):
         """returns a pandas dataframe with parameters.
         if defaults have been read, returns every parameter available 
@@ -158,15 +176,18 @@ class parameterGroup(object):
             try:
                 cont = df[[t,'value']].dropna(0).set_index(t)
             except KeyError:
+                # no family found in the group so init.
                 if df.index.name==t:
                     cont = df
                 else:
                     continue
             newdict = cont.T.to_dict('records')[0]
             if not self.defaults[t]:
+                # no defaults loaded, so only update the params.
                 self.params[t].update(newdict)
             else:
                 for k, v in newdict.items():
+                    # compare changes to defaults before adding them.
                     try:
                         dv, doc = self.defaults[t][k]
                         if fortParse(v)!=fortParse(dv):
@@ -176,29 +197,38 @@ class parameterGroup(object):
                         continue
                 self.mixPars(t)
 
-    def writeInlists(self, outpath, sjname="star_job",
-                     ctname="controls", pgname="pgstar"):
-        """Writes inlist files at 'outpath' using the object's params
-        values.
+    def writeParams(self, outpath, section='default'):
+        """Writes inlist files at 'outpath' using the current object's 
+        param values.
         
         Args:
             outpath (str): path to work folder.
-            sjname (str): star_job inlist suffix.
-            ctname (str): controls inlist suffix.
-            pgname (str): pgstar inlist suffix.
+            section (str): inlists' suffix.
+
+        """
+        for i, t in enumerate(parameterGroup.types):
+            write2Inlist(self[t], "&{}".format(t), outpath,
+                         "{}_{}".format(section, t), 
+                         clobber=True)
+    
+    def writeInlist(self, outpath, section='default'):
+        """Writes inlist file at 'outpath', calling 'section' 
+        parameter files
+        
+        Args:
+            outpath (str): path to work folder.
+            section (str): suffix for parameter files to call.
 
         """
         for i, t in enumerate(parameterGroup.types):
             keys = ["read_extra_{}_inlist1", "extra_{}_inlist1_name"]
-            vals = ['.true.', "inlist_{}".format(t)]
+            vals = ['.true.', "{}_{}".format(section, t)]
             inlistd = dict(zip([k.format(t) for k in keys], vals))
             if not i:
                 write2Inlist(inlistd, "&{}".format(t), outpath, "inlist", 
                              clobber=True)
             else:
                 write2Inlist(inlistd, "&{}".format(t), outpath, "inlist")
-            write2Inlist(self[t], "&{}".format(t), outpath, vals[1], 
-                         clobber=True)
 
 
 def parseDocs(dlist):
@@ -228,6 +258,8 @@ def setupMESArun(destination, clobber=True):
             shutil.copytree(codesource, destination)
     else:
         shutil.copytree(codesource, destination)
+    os.remove(os.path.join(destination,"inlist_pgstar"))
+    os.remove(os.path.join(destination,"inlist_project"))
 
 
 def getRawPars(inlist, type='controls'):
@@ -453,3 +485,32 @@ def compileMESA(outpath, startsdk=True):
     print(out.decode())
     exitcode = p.returncode
     return exitcode
+
+
+def addRunStep(source, destination, clobber=True):
+    """copy essential files from a run to another folder 
+    to create a new evolution step. 
+    WARN: clobbers(rewrites) destination by default.
+    
+    Args:
+        source (str): original run path.
+        destination (str): folder path for new run.
+        clobber (bool): rewrite destination folder.
+    
+    """
+    if os.path.exists(destination):
+        if clobber:
+            shutil.rmtree(destination)
+            shutil.copytree(source, destination, 
+                            ignore=shutil.ignore_patterns("LOGS", "photos", 
+                                                          "*png", "*.gif"))
+    else:
+        shutil.copytree(source, destination, 
+                        ignore=shutil.ignore_patterns("LOGS", "photos", 
+                                                      "*png", "*.gif"))
+    os.mkdir(os.path.join(destination, "LOGS"))
+    os.mkdir(os.path.join(destination, "photos"))
+    photos = os.path.join(source, "photos")
+    lastphot = max([os.path.join(photos,x) for x in os.listdir(photos)], key=os.path.getctime)
+    shutil.copy2(lastphot, os.path.join(destination, "photos", "x000"))
+
