@@ -6,6 +6,7 @@ from subprocess import PIPE, Popen
 _mesa_dir = os.environ.get('MESA_DIR')
 _mesasdk_root = os.environ.get('MESASDK_ROOT')
 _maxmultipars = 10000
+_delchar = '!'
 
 class parameterGroup(object):
     """class that handles all parameters for a run 
@@ -189,6 +190,9 @@ class parameterGroup(object):
                 for k, v in newdict.items():
                     # compare changes to defaults before adding them.
                     try:
+                        if v==_delchar:
+                            del self[t][k]
+                            continue
                         dv, doc = self.defaults[t][k]
                         if fortParse(v)!=fortParse(dv):
                             self.defaults[t][k] = (fortParse(v), doc)
