@@ -20,6 +20,7 @@ First, make sure you have all the required packages. (all of these are pip-able,
    * `pip install qgrid==1.0.0b3`   
    * `jupyter nbextension enable --py --sys-prefix qgrid`   
 * [mesa reader](https://github.com/wmwolf/py_mesa_reader)
+
 Then, import magpie.py to your notebook and that's it.
 
 ## Instalation
