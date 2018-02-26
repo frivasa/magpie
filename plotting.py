@@ -6,7 +6,7 @@ from matplotlib.ticker import StrMethodFormatter, FormatStrFormatter
 mpl.rc('lines', linewidth=2, linestyle='-', marker=None)
 mpl.rc('font', family='monospace', size=12.0)
 mpl.rc('text', color='000000')
-mpl.rc('axes', linewidth=2, grid=False, titlepad=10.0, labelsize='large', 
+mpl.rc('axes', linewidth=2, grid=False, titlepad=10.0, labelsize='large',
        axisbelow=False, autolimit_mode='round_numbers')
 mpl.rc('axes.formatter', limits=(-1,1))
 mpl.rc('xtick', top=True, direction='in')
@@ -20,10 +20,11 @@ mpl.rc('axes', facecolor='ffffff')
 mpl.rc('figure', facecolor='bbd7e5')
 import matplotlib.pyplot as plt
 #plt.style.use('./mpl.style')
+
 _Rs = 695700e5 # cm
 _Ms = 1.988e33 # g
 
-def species(runf, prof_number, byM=False, 
+def species(runf, prof_number, byM=False,
             species=["h1", "he4", "c12", "o16"], show=False):
     h = mr.MesaData(os.path.join(runf, "LOGS/history.data"))
     l = mr.MesaLogDir(os.path.join(runf, "LOGS"))
@@ -53,7 +54,7 @@ def species(runf, prof_number, byM=False,
     print "Wrote: {0}/png/{1}/{1}_{2:05}".format(runf, tag, p.model_number)
 
 
-def snapshot(runf, prof_number, byM=False, 
+def snapshot(runf, prof_number, byM=False,
              species=["h1", "he4", "c12", "o16"], show=False):
     h = mr.MesaData(os.path.join(runf, "LOGS/history.data"))
     l = mr.MesaLogDir(os.path.join(runf, "LOGS"))
@@ -95,7 +96,7 @@ def snapshot(runf, prof_number, byM=False,
     print "Wrote: {}/png/prof/prof_{:05}".format(runf, p.model_number)
 
 
-def plotAbundances(p, h, ax, species=['h1'], byM=False, rmax=1.0, 
+def plotAbundances(p, h, ax, species=['h1'], byM=False, rmax=1.0,
                    tstamp=True, xtitle=False):
     if byM:
         rad = p.mass
@@ -157,7 +158,7 @@ def plotMainProp(p, h, ax, prop='dens', byM=False, rmax=1.0, tstamp=True,
     if xtitle:
         ax.set_xlabel(xlabel)
     if tstamp:
-        ax.annotate("Time: {:0=8.7f}e9 yr".format(float(p.star_age)/1e9), 
+        ax.annotate("Time: {:0=8.7f}e9 yr".format(float(p.star_age)/1e9),
                     xy=(0.10, 0.15), xycoords='axes fraction', fontsize=10)
     ax.yaxis.set_major_formatter(StrMethodFormatter('{x:.2e}'))
 
@@ -165,9 +166,9 @@ def plotMainProp(p, h, ax, prop='dens', byM=False, rmax=1.0, tstamp=True,
 def colIter():
     # Sasha Trubetskoy's simple 20 color list (based on metro lines)
     # https://sashat.me/2017/01/11/list-of-20-simple-distinct-colors/
-    cols = ['#e6194b', '#3cb44b', '#0082c8', '#000000', '#f58231', '#911eb4', 
-            '#008080', '#e6beff', '#aa6e28', '#fffac8', '#800000', '#aaffc3', 
-            '#808000', '#ffd8b1', '#000080', '#808080', '#ffe119', '#f032e6', 
+    cols = ['#e6194b', '#3cb44b', '#0082c8', '#000000', '#f58231', '#911eb4',
+            '#008080', '#e6beff', '#aa6e28', '#fffac8', '#800000', '#aaffc3',
+            '#808000', '#ffd8b1', '#000080', '#808080', '#ffe119', '#f032e6',
             '#46f0f0', '#d2f53c', '#fabebe']
     cols *= 4
     for i in range(len(cols)):
