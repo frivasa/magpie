@@ -141,8 +141,8 @@ def species(runf, prof_number=1, byM=False, rmax=0.0, rmin=0.0, core=False,
         elif not byM and not rmax:
             rmax = p.photosphere_r
 
-    fig = plt.figure(figsize=(7, 9.5))
-    layout = (1, 1)
+    fig = plt.figure(figsize=(11, 5))
+    layout = (1, 2) # add an extra slot to make space for legend
     ax1 = plt.subplot2grid(layout, (0, 0), aspect='auto', adjustable='box-forced')
     plotAbundances(p, ax1, species=species, byM=byM, core=core, tstamp=tstamp,
                    rmax=rmax, rmin=rmin, xtitle=True, thresh=thresh)
@@ -204,9 +204,9 @@ def snapshot(runf, prof_number=1, byM=False, rmax=0.0,
         elif not byM and not rmax:
             rmax = p.photosphere_r
 
-    fig = plt.figure(figsize=(12,8.5))
+    fig = plt.figure(figsize=(15,9))
     # fill the grid with axes
-    layout = (3, 2)
+    layout = (3, 3)
     ax1 = plt.subplot2grid(layout, (0, 0), aspect="auto")
     ax2 = plt.subplot2grid(layout, (1, 0), aspect="auto", adjustable='box-forced')  #, sharex=ax1)
     ax3 = plt.subplot2grid(layout, (2, 0), aspect="auto", adjustable='box-forced')
@@ -241,7 +241,7 @@ def snapshot(runf, prof_number=1, byM=False, rmax=0.0,
     else:
         # don't save, just return the profile to the notebook
         return fig
-    
+
 
 def plotAbundances(p, ax, species=_ap13, byM=False, rmax=0.0, rmin=0.0,
                    tstamp=False, xtitle=False, thresh=-6, core=False):
@@ -337,9 +337,34 @@ def plotHR(p, h, ax):
     ax.plot(tef, lum)
     ax.set_xlabel('log Effective Temperature')
     ax.set_ylabel('log Luminosity')
+    # TODO: get a better range estimate.
     ax.set_xlim([4.5, 3.4])
     ax.yaxis.set_major_formatter(StrMethodFormatter('{x:2.1f}'))
 
+
+def getWholeHistory(folders, xkey='log_Teff', ykey='log_L'):
+    """returns aggregated history for a pair of 
+    keys from a list of sorted folders. 
+    Defaults to HR variables log_Teff and log_L
+    """
+    xvals, yvals = np.array([]), np.array([])
+    for f in folders:
+        h = mr.MesaData(os.path.join(f, "LOGS/history.data"))
+        l = mr.MesaLogDir(os.path.join(f, "LOGS"))
+        p = l.profile_data(profile_number=len(l.profile_numbers))
+        xrow, yrow = getHistProp(p, h, xkey, ykey)
+        xvals = np.append(xvals, xrow)
+        yvals = np.append(yvals, yrow)
+    return xvals, yvals
+
+
+def getHistProp(p, h, key1='log_L', key2='log_Teff'):
+    """Returns a pair of list of values for two keys in the run's history 
+    for a profile.
+    """
+    numh = np.where(h.model_number==p.model_number)
+    return h.data(key1)[:numh[0][0]], h.data(key2)[:numh[0][0]]
+    
 
 def plotMainProp(p, ax, prop='dens', byM=False, rmax=0.0, tstamp=True,
                  color='black', xtitle=False, core=False):
@@ -427,9 +452,31 @@ def runStats(runf, props=['star_mass', 'log_Teff', 'c_core_mass',
     return len(l.profile_numbers)
 
 
-def writeCoreProfile(runf, filename, otp='./', species=[]):
+def writeCoreProfile(runf, filename, fluff_dens=-1e0, otp='./', 
+                     species=[], rescale=0, debug=False):
+    """writes a simple plaintext R vs Dens+Temp+species profile with the structure:
+    # Radius dens temp c12 ne22
+    <Number of zones/rows>
+    <DATA rows>
+    #Mass: <Mass profiled> Msun carved out from a <Total mass in the profile>, from an initial <ZAMS mass>
+    
+    Args:
+        runf (str): run folder to look in.
+        filename (str): profile.data name to probe.
+        fluff_dens (float): density threshold for cuttoff. set to negative to cut at the end of the CO core.
+        otp (str): output folder.
+        species (list of str): species list to write out.
+        rescale (int): rescale to 'rescale' cells. all cells is rescale=0.
+        debug (bool): return radii, densities, temperatures, and profile obj
+    
+    """
     singlep = mr.MesaData(os.path.join(runf, "LOGS/{}".format(filename)))
-    filt = np.where(singlep.mass < singlep.c_core_mass)
+    if fluff_dens < 0.0:
+        filt = np.where(singlep.mass < singlep.c_core_mass)
+        fluff = ''
+    else:
+        filt = np.where(singlep.Rho > fluff_dens)
+        fluff = '_fluff'
     allspecies  = singlep.bulk_names[9:]
     selection = []
     if species:
@@ -440,28 +487,48 @@ def writeCoreProfile(runf, filename, otp='./', species=[]):
                 print "'{}' not found in profile.".format(s)
     else:
         selection = allspecies
-    radi = np.flip(singlep.R[filt],0)*_Rs  # cgs
+    radi = np.flip(singlep.R[filt],0)
     dens = np.flip(singlep.Rho[filt],0)
     temp = np.flip(singlep.T[filt],0)
     zones = len(radi)
     header = ['#', 'Radius', 'dens', 'temp']
+    fracs = []
     for s in selection:
         header.append(s)
-    file = '{}wd_{}to{:.2f}.dat'.format(otp, singlep.initial_mass, singlep.c_core_mass)
-    with open(file, 'w') as f:
-        f.write(" ".join(header))
-        f.write("\n")
-        f.write("{}\n".format(zones))
-        for z in range(zones):
-            line = ["{:20.7e} {:20.7e} {:20.7e}".format(radi[z], dens[z], temp[z])]
-            for s in selection:
-                line.append("{:20.7e}".format(singlep.data(s)[z]))
-            f.write(" ".join(line))
+        fracs.append(np.flip(singlep.data(s)[filt],0))
+    print header
+    file = '{}wd_{}to{:.2f}{}.dat'.format(otp, singlep.initial_mass, 
+                                          singlep.c_core_mass, fluff)
+    if rescale:
+        rfracs = []
+        xscale = np.linspace(radi[0], radi[-1], num=rescale)
+        dens = np.interp(xscale, radi, dens)
+        temp = np.interp(xscale, radi, temp)
+        for fr in fracs:
+            rfracs.append(np.interp(xscale, radi, fr))
+        zones = rescale
+        fracs = rfracs
+        radi = xscale
+    radi*=_Rs # cgs
+    if not debug:
+        with open(file, 'w') as f:
+            f.write(" ".join(header))
             f.write("\n")
-        f.write("#Mass: {} Msun carved out from a {},"\
-                "from an initial {}".format(singlep.c_core_mass, singlep.star_mass, 
-                                            singlep.initial_mass))
-    print "Wrote: {}".format(file)
+            f.write("{}\n".format(zones))
+            for z in range(zones):
+                line = ["{:20.7e} {:20.7e} {:20.7e}".format(radi[z], dens[z], temp[z])]
+                for fr in fracs:
+                #for s in selection:
+                    #line.append("{:20.7e}".format(np.flip(singlep.data(s),0)[z]))
+                    line.append("{:20.7e}".format(fr[z]))
+                f.write(" ".join(line))
+                f.write("\n")
+            f.write("#Mass: {} Msun (CO core only) carved out from a {},"\
+                    "from an initial {}".format(singlep.c_core_mass, singlep.star_mass, 
+                                                singlep.initial_mass))
+        print "Wrote: {}".format(file)
+    else:
+        return radi, dens, temp, singlep
 
 
 def colIter():
