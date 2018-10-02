@@ -105,9 +105,9 @@ class parameterGroup(object):
         """
         inlists = ["{}_{}".format(section, t) for t in parameterGroup.types]
         paths = [os.path.join(runf, inl) for inl in inlists]
-        print "Read:"
-        print "\n".join(paths)
-        print "Into parameterGroup."
+        print("Read:")
+        print("\n".join(paths))
+        print("Into parameterGroup.")
         for t in parameterGroup.types:
             p = os.path.join(runf, "{}_{}".format(section, t))
             self.setPars(p, type=t)
@@ -260,9 +260,9 @@ def setupMESArun(destination, clobber=True):
     if os.path.exists(destination):
         if clobber:
             shutil.rmtree(destination)
-            shutil.copytree(codesource, destination)
+            shutil.copytree(codesource, destination, ignore=shutil.ignore_patterns('.svn'))
     else:
-        shutil.copytree(codesource, destination)
+        shutil.copytree(codesource, destination, ignore=shutil.ignore_patterns('.svn'))
     os.remove(os.path.join(destination,"inlist_pgstar"))
     os.remove(os.path.join(destination,"inlist_project"))
 
@@ -378,7 +378,8 @@ def getRawDefaults(defaultfile):
                         doc = False
                         setvars = False
                     else:
-                        n = namenum.next()
+                        # python 2 > 3 iterator.next() >> next(iterator)
+                        n = next(namenum)
                         try:
                             m = multi.index(cname)
                         except ValueError:

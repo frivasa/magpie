@@ -4,6 +4,7 @@ import mesa_reader as mr  # https://github.com/wmwolf/py_mesa_reader
 import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
+from cycler import cycler
 from matplotlib.ticker import StrMethodFormatter, FormatStrFormatter
 mpl.rc('lines', linewidth=2, linestyle='-', marker=None)
 mpl.rc('font', family='monospace', size=12.0)
@@ -55,6 +56,28 @@ _ap13 = [
     'mg24', 'si28', 's32 ', 'ar36',
     'ca40', 'ti44', 'cr48', 'fe52', 'ni56'
 ]
+lines = [(0, ()), 
+         (0, (1, 5)),
+         (0, (5, 5)),
+         (0, (3, 5, 1, 5)),
+         (0, (3, 5, 1, 5, 1, 5)),
+         (0, (1, 1)),
+         (0, (5, 1)),
+         (0, (3, 1, 1, 1)),
+         (0, (3, 1, 1, 1, 1, 1))]
+# x = {1, 5, 10}
+# (0, (1, x)) dotted
+# (0, (5, x)) dashed
+# (0, (3, x, 1, x)) dash-dot
+# (0, (1, x, 1, x, 1, x)) dash-dot-dot
+# Colors modified from Sasha Trubetskoy's 
+# simple 20 color list (based on metro lines).
+# https://sashat.me/2017/01/11/list-of-20-simple-distinct-colors/
+colors = ['#e6194b', '#3cb44b', '#0082c8', '#000000', '#f58231', 
+          '#911eb4', '#008080', '#e6beff', '#bddc36', '#ccc8a0', 
+          '#800000', '#808080', '#808000', '#46f0f0', '#000080', 
+          '#ffe119', '#aa6e28', '#f032e6', '#ffa64d', '#7fbf92', '#f68888']
+cc = (cycler('linestyle', lines)*cycler('color', colors))
 
 
 def centralCond(runf, prof_number, show=False, tstamp=True):
@@ -74,9 +97,9 @@ def centralCond(runf, prof_number, show=False, tstamp=True):
     l = mr.MesaLogDir(os.path.join(runf, "LOGS"))
     profs = l.profile_numbers
     if prof_number > len(profs):
-        print "Profile not found. ({}/{})".format(prof_number, len(profs))
+        print ("Profile not found. ({}/{})".format(prof_number, len(profs)))
     else:
-        print "Plotting T_c vs Rho_c. {}/{}.".format(prof_number, len(profs))
+        print ("Plotting T_c vs Rho_c. {}/{}.".format(prof_number, len(profs)))
     p = l.profile_data(profile_number=prof_number)
     rmax = l.profile_data(profile_number=1).photosphere_r
     fig = plt.figure(figsize=(7, 5))
@@ -98,7 +121,7 @@ def centralCond(runf, prof_number, show=False, tstamp=True):
     else:
         plt.savefig("{0}/png/{1}/{1}_{2:05}".format(runf, tag, p.model_number))
         plt.close(fig)
-    print "Wrote: {0}/png/{1}/{1}_{2:05}".format(runf, tag, p.model_number)
+    print ("Wrote: {0}/png/{1}/{1}_{2:05}".format(runf, tag, p.model_number))
 
 
 def species(runf, prof_number=1, byM=False, rmax=0.0, rmin=0.0, core=False,
@@ -125,9 +148,9 @@ def species(runf, prof_number=1, byM=False, rmax=0.0, rmin=0.0, core=False,
         l = mr.MesaLogDir(os.path.join(runf, "LOGS"))
         profs = l.profile_numbers
         if prof_number > len(profs):
-            print "Profile not found. ({}/{})".format(prof_number, len(profs))
+            print ("Profile not found. ({}/{})".format(prof_number, len(profs)))
         else:
-            print "Plotting Abundances. {}/{}.".format(prof_number, len(profs))
+            print( "Plotting Abundances. {}/{}.".format(prof_number, len(profs)))
         p = l.profile_data(profile_number=prof_number)
         if byM and not rmax:
             rmax = p.initial_mass
@@ -141,12 +164,15 @@ def species(runf, prof_number=1, byM=False, rmax=0.0, rmin=0.0, core=False,
         elif not byM and not rmax:
             rmax = p.photosphere_r
 
-    fig = plt.figure(figsize=(11, 5))
-    layout = (1, 2) # add an extra slot to make space for legend
+    fig = plt.figure(figsize=(11, 7))
+    layout = (1, 1)
     ax1 = plt.subplot2grid(layout, (0, 0), aspect='auto', adjustable='box-forced')
     plotAbundances(p, ax1, species=species, byM=byM, core=core, tstamp=tstamp,
                    rmax=rmax, rmin=rmin, xtitle=True, thresh=thresh)
-    plt.tight_layout()
+    lgd = ax1.legend(ncol=6, loc='upper left', bbox_to_anchor=(1.0, 1.02), 
+                     columnspacing=0.3, labelspacing=0.1, markerfirst=False, 
+                     numpoints=3)
+    plt.tight_layout(pad=1.0, h_pad=0.0, w_pad=0.5, rect=(0,0,0.5,1))
     tag = 'abun'
     if folder:
         # build filetree and show or save the figure
@@ -160,7 +186,7 @@ def species(runf, prof_number=1, byM=False, rmax=0.0, rmin=0.0, core=False,
         else:
             plt.savefig("{0}/png/{1}/{1}_{2:05}".format(runf, tag, p.model_number))
             plt.close(fig)
-        print "Wrote: {0}/png/{1}/{1}_{2:05}".format(runf, tag, p.model_number)
+        print ("Wrote: {0}/png/{1}/{1}_{2:05}".format(runf, tag, p.model_number))
     else:
         # don't save, just return the profile to the notebook
         return fig
@@ -187,9 +213,9 @@ def snapshot(runf, prof_number=1, byM=False, rmax=0.0,
         l = mr.MesaLogDir(os.path.join(runf, "LOGS"))
         profs = l.profile_numbers
         if prof_number > len(profs):
-            print "Profile not found. ({}/{})".format(prof_number, len(profs))
+            print ("Profile not found. ({}/{})".format(prof_number, len(profs)))
         else:
-            print "Plotting Abundances. {}/{}.".format(prof_number, len(profs))
+            print ("Plotting Abundances. {}/{}.".format(prof_number, len(profs)))
         p = l.profile_data(profile_number=prof_number)
         if byM and not rmax:
             rmax = p.initial_mass
@@ -222,8 +248,8 @@ def snapshot(runf, prof_number=1, byM=False, rmax=0.0,
     plotAbundances(p, ax4, species=species, byM=byM, rmax=rmax, core=core)
     if h is not None:
         plotHR(p, h, ax5)
-    plt.tight_layout()
 
+    fig.subplots_adjust(hspace=0.5, wspace=0.4)
     tag = 'prof'
     if folder:
         # build filetree and show or save the figure
@@ -237,7 +263,7 @@ def snapshot(runf, prof_number=1, byM=False, rmax=0.0,
         else:
             plt.savefig("{0}/png/{1}/{1}_{2:05}".format(runf, tag, p.model_number))
             plt.close(fig)
-        print "Wrote: {0}/png/{1}/{1}_{2:05}".format(runf, tag, p.model_number)
+        print ("Wrote: {0}/png/{1}/{1}_{2:05}".format(runf, tag, p.model_number))
     else:
         # don't save, just return the profile to the notebook
         return fig
@@ -272,16 +298,15 @@ def plotAbundances(p, ax, species=_ap13, byM=False, rmax=0.0, rmin=0.0,
             rmax = p.photosphere_r
         ax.set_xlim([rmin+1.0e7, rmax*_Rs])
         ax.set_xscale('log')
-    styles = colIter()
     species = [x.strip() for x in species]
     lim = float("1e{}".format(thresh))
-    for s in species:
+    for s, props in zip(species, cc):
         tag = '$^{{{}}}{}$'.format(*elemSplit(s))
         # don't skip species, it's bad for you.
         #if max(p.data(s))<lim:
         #    continue
-        c, ls = styles.next()
-        ax.semilogy(rad, p.data(s), color=c, linestyle=ls, alpha=0.7, label=tag)
+#         c, ls = next(styles)
+        ax.semilogy(rad, p.data(s), alpha=0.7, label=tag, ls=props['linestyle'], c=props['color'])
     ax.set_ylim(float("1e{}".format(thresh)), 2e0)
     ax.legend(ncol=5, loc='upper left', bbox_to_anchor=(1.0, 1.0), 
               columnspacing=0.5, labelspacing=0.5, markerfirst=False, 
@@ -433,22 +458,22 @@ def runStats(runf, props=['star_mass', 'log_Teff', 'c_core_mass',
     """
     h = mr.MesaData(os.path.join(runf, "LOGS/history.data"))
     l = mr.MesaLogDir(os.path.join(runf, "LOGS"))
-    print "Version: {version_number}\nInitial Mass(Z): "\
-          "{initial_mass} ({initial_z})".format(**h.header_data)
-    print "Profiles found: {}".format(len(l.profile_numbers))
-    print "Models run: {}".format(h.data('model_number')[-1])
-    print "Initial zones: {}".format(max(h.data('num_zones')))
-    print "\nSimtime: {:10.9} Gyr\n".format(h.data('star_age')[-1]/1e9)
-    print "{:20}{:<20} {:<20}\n".format('Prop','Initial','Final')
+    print ("Version: {version_number}\nInitial Mass(Z): "\
+          "{initial_mass} ({initial_z})".format(**h.header_data))
+    print ("Profiles found: {}".format(len(l.profile_numbers)))
+    print ("Models run: {}".format(h.data('model_number')[-1]))
+    print ("Initial zones: {}".format(max(h.data('num_zones'))))
+    print ("\nSimtime: {:10.9} Gyr\n".format(h.data('star_age')[-1]/1e9))
+    print ("{:20}{:<20} {:<20}\n".format('Prop','Initial','Final'))
     otp = "{:20}{:<20.5f} {:<20.5f}"
     for arg in props:
-        print otp.format(arg, h.data(arg)[0], h.data(arg)[-1])
+        print (otp.format(arg, h.data(arg)[0], h.data(arg)[-1]))
     if 'c_core_mass' in props:
         p = l.profile_data()
         zone = np.where(p.mass < p.c_core_mass)[0][0]
-        print "Final Mass and Radius of the Carbon Core: "\
-              "{:6.5e} Msun {:6.5e} cm".format(p.mass[zone], p.R[zone]*_Rs)
-        print "150km match head x_match: {:.6e}".format(p.R[zone]*_Rs/np.sqrt(2.))
+        print ("Final Mass and Radius of the Carbon Core: "\
+              "{:6.5e} Msun {:6.5e} cm".format(p.mass[zone], p.R[zone]*_Rs))
+        print ("150km match head x_match: {:.6e}".format(p.R[zone]*_Rs/np.sqrt(2.)))
     return len(l.profile_numbers)
 
 
@@ -484,7 +509,7 @@ def writeCoreProfile(runf, filename, fluff_dens=-1e0, otp='./',
             if s.strip() in allspecies:
                 selection.append(s)
             else:
-                print "'{}' not found in profile.".format(s)
+                print ("'{}' not found in profile.".format(s))
     else:
         selection = allspecies
     radi = np.flip(singlep.R[filt],0)
@@ -496,7 +521,7 @@ def writeCoreProfile(runf, filename, fluff_dens=-1e0, otp='./',
     for s in selection:
         header.append(s)
         fracs.append(np.flip(singlep.data(s)[filt],0))
-    print header
+    print (header)
     file = '{}wd_{}to{:.2f}{}.dat'.format(otp, singlep.initial_mass, 
                                           singlep.c_core_mass, fluff)
     if rescale:
@@ -526,11 +551,21 @@ def writeCoreProfile(runf, filename, fluff_dens=-1e0, otp='./',
             f.write("#Mass: {} Msun (CO core only) carved out from a {},"\
                     "from an initial {}".format(singlep.c_core_mass, singlep.star_mass, 
                                                 singlep.initial_mass))
-        print "Wrote: {}".format(file)
+        print ("Wrote: {}".format(file))
     else:
         return radi, dens, temp, singlep
 
 
+def elemSplit(s):
+    """Standalone element name spliter. 
+    he4 -> (4, He)
+    """
+    sym = s.rstrip('0123456789 ')
+    A = s[len(sym):].strip()
+    return A, sym.title()
+
+
+# python 2 cylcler
 def colIter():
     """Simple color/linestyle iterator. Colors selected from Sasha 
     Trubetskoy's simple 20 color list (based on metro lines)
@@ -570,12 +605,3 @@ def colIter():
         #if i==lcols:
         #    i=0
         #yield cols[i], styles[i%lstyles]
-
-
-def elemSplit(s):
-    """Standalone element name spliter. 
-    he4 -> (4, He)
-    """
-    sym = s.rstrip('0123456789 ')
-    A = s[len(sym):].strip()
-    return A, sym.title()
